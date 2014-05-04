@@ -115,11 +115,11 @@ module Shoulda # :nodoc:
 
           @subject.class.new.tap do |instance|
             instance.__send__("#{@attribute}=", value)
-            
+
             other_non_nullable_columns.each do |non_nullable_column|
-              instance.__send__("#{non_nullable_column.name}=", correct_type_for_column(non_nullable_column))
+              instance.__send__("#{non_nullable_column.name}=", default_value_for_column(non_nullable_column))
             end
-            
+
             if has_secure_password?
               instance.password = 'password'
               instance.password_confirmation = 'password'
@@ -167,13 +167,16 @@ module Shoulda # :nodoc:
           else
             all_records = @subject.class.all
             @options[:scopes].all? do |scope|
-              previous_value = all_records.map(&scope).max
+              column_type = @subject.class.columns_hash[scope.to_s]
+
+              previous_value   = all_records.map(&scope).max
+              previous_value ||= default_value_for_column(column_type)
 
               # Assume the scope is a foreign key if the field is nil
-              previous_value ||= correct_type_for_column(@subject.class.columns_hash[scope.to_s])
-
               next_value =
-                if @subject.class.respond_to?(:defined_enums) && @subject.defined_enums[scope.to_s]
+                if column_type.respond_to?(:type) && column_type.type == :uuid
+                  default_value_for_column(column_type)
+                elsif @subject.class.respond_to?(:defined_enums) && @subject.defined_enums[scope.to_s]
                   available_values = @subject.defined_enums[scope.to_s].reject do |key, _|
                     key == previous_value
                   end
@@ -202,7 +205,7 @@ module Shoulda # :nodoc:
           end
         end
 
-        def correct_type_for_column(column)
+        def default_value_for_column(column)
           if column.type == :string || column.type == :binary
             '0'
           elsif column.type == :datetime
